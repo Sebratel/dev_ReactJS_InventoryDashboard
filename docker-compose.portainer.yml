@@ -11,14 +11,14 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        APP_VERSION: ${APP_VERSION:-1.1.0}
+        APP_VERSION: ${APP_VERSION:-1.1.1}
     # a versão vai na tag da imagem: o Portainer mostra qual versão está no ar
-    image: logistic-dashboard:${APP_VERSION:-1.1.0}
+    image: logistic-dashboard:${APP_VERSION:-1.1.1}
     # a imagem é construída aqui, não baixada de registro: sem isto o "Re-pull
     # image" do Portainer tenta o Docker Hub e o redeploy falha
     pull_policy: build
     labels:
-      org.opencontainers.image.version: ${APP_VERSION:-1.1.0}
+      org.opencontainers.image.version: ${APP_VERSION:-1.1.1}
     restart: unless-stopped
     # Frontend / Web UI (3000–3099): 3012 em staging e em produção (planilha de portas)
     ports:

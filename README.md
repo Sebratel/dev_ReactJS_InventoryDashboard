@@ -159,8 +159,8 @@ produção.
 docker compose -f docker-compose.portainer.yml up -d --build
 ```
 
-- **Versão:** `1.1.0`, a mesma no `package.json` (raiz, `server/`, `web/`), nos
-  `package-lock.json` e na tag da imagem (`logistic-dashboard:${APP_VERSION:-1.1.0}`);
+- **Versão:** `1.1.1`, a mesma no `package.json` (raiz, `server/`, `web/`), nos
+  `package-lock.json` e na tag da imagem (`logistic-dashboard:${APP_VERSION:-1.1.1}`);
   aparece no Portainer e no `/api/v1/health`. Todo commit que sobe para um ambiente leva
   versão **maior** que a dele: troque com `npm run version:set -- X.Y.Z` (patch = correção,
   minor = funcionalidade, major = quebra).
@@ -180,6 +180,50 @@ docker compose -f docker-compose.portainer.yml up -d --build
   estoque, os usuários com as permissões e o log de edições. Não remova o volume ao
   recriar a stack.
 - `ADMIN_EMAILS`: admin(s) de fábrica — ver [Administração](#administração).
+
+### CI (GitHub Actions)
+
+O workflow [`.github/workflows/ci.yml`](.github/workflows/ci.yml) é o portão de validação:
+roda em todo pull request para `main` ou `staging` e em todo push nessas branches (e à mão,
+em *Actions → CI → Run workflow*). Ele não faz deploy: quem builda e sobe é o Portainer, a
+partir do Git.
+
+| Job | O que faz |
+|---|---|
+| `aplicacao` | `npm run install:all`, `npm run typecheck`, `npm test` e `npm run build` (Node 24, o mesmo da imagem) |
+| `imagem` | builda a imagem do `Dockerfile` com o `docker-compose.portainer.yml`, sobe a stack com `up -d --wait` (espera o healthcheck, como o Portainer) e confere o `GET /api/v1/health`: `status` = `UP` e `version` = versão do `package.json`, e a imagem com essa tag e esse label. Roda com variáveis fictícias, sem credencial do Voalle nem do MariaDB: as fontes falham e o health continua `UP` |
+| `validacoes` | `.github/scripts/validate-version.py`: versão `X.Y.Z` igual no `package.json`, nos `package-lock.json` e no compose, e **maior** que a do ambiente (no PR, a da branch-alvo; no push, a do commit anterior). `.github/scripts/validate-compose.py`: nome da stack, nomes de serviço, gateway por ambiente e faixa de portas (`--strict-ports`), para staging e produção |
+| `ci-ok` | agrega os três: só fica verde se nenhum falhou. É o único check obrigatório |
+
+Os dois validadores são cópias dos scripts-modelo do plugin Sebratel Backend (skill
+`cicd-deploy-backend`); atualize-os copiando de lá, não editando aqui. Pendência antiga de
+compose que não dá para corrigir agora vai em `.github/compose-exceptions.txt`, uma linha por
+pendência, com o motivo (hoje está vazio).
+
+Consequência prática: **todo PR que muda alguma coisa sobe a versão** com
+`npm run version:set -- X.Y.Z`, senão o `validacoes` reprova. Dois PRs abertos com a mesma
+versão: o segundo a mergear reprova e precisa de uma versão maior.
+
+Para rodar o mesmo que o CI antes de abrir o PR (o job `imagem` precisa de Docker):
+
+```bash
+npm run install:all && npm run typecheck && npm test && npm run build
+```
+
+```bash
+BASE_REF=origin/staging python .github/scripts/validate-version.py
+```
+
+```bash
+python .github/scripts/validate-compose.py --repo dev_ReactJS_logisticDashboard --env staging --strict-ports --exceptions .github/compose-exceptions.txt docker-compose.portainer.yml
+```
+
+> **Para o administrador do repositório:** em *Settings → Rules* (ou *Branches*), marque o
+> status check **`ci-ok`** como obrigatório (*Require status checks to pass*) nas branches
+> **`main`** e **`staging`**. Na `main`, mantenha também o pull request obrigatório com
+> 1 aprovação e o bloqueio de push direto e de force push. Marque só o `ci-ok`, não os jobs
+> um a um: job novo entra no `needs` dele sem mexer na regra. O check só aparece na lista
+> depois que o workflow rodar uma vez.
 
 ## Compras · Lançamento e saldos
 
