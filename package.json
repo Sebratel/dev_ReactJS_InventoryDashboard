@@ -1,6 +1,6 @@
 {
   "name": "logistic-dashboard",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "private": true,
   "description": "Estoque Sebratel (réplica dos relatórios de logística do Power BI em React + Vite)",
   "scripts": {

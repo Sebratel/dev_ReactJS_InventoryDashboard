@@ -1,0 +1,6 @@
+# Pendencias de migracao ja existentes no compose (uma por linha): <arquivo>:<regra>[:<servico>]  # motivo
+# Lido por .github/scripts/validate-compose.py no job `validacoes` do CI (.github/workflows/ci.yml).
+# Cada linha e uma divida registrada, nao uma licenca: o CI as exibe como aviso a cada execucao e violacao
+# nova continua falhando. Remova a linha ao corrigir.
+#
+# Nenhuma pendencia: o docker-compose.portainer.yml ja segue as regras C1-C6 (16/11/2026).
