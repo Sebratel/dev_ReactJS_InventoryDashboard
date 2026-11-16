@@ -16,6 +16,10 @@ RUN npm run build && npm prune --omit=dev
 
 # ---------- 3) imagem final ----------
 FROM node:24-alpine
+# versão da aplicação (a mesma do package.json e da tag da imagem no compose)
+ARG APP_VERSION=0.0.0
+LABEL org.opencontainers.image.title="logistic-dashboard" \
+      org.opencontainers.image.version="${APP_VERSION}"
 ENV NODE_ENV=production \
     TZ=America/Sao_Paulo \
     PORT=8080
@@ -31,7 +35,7 @@ COPY --from=server /app/server/dist ./dist
 COPY --from=web /app/web/dist ./public
 ENV PUBLIC_DIR=/app/public \
     DATA_PATH=/app/data
-# cadastro de controle de estoque — montar um volume aqui (ver docker-compose.yml)
+# cadastro de controle de estoque — montar um volume aqui (ver docker-compose.portainer.yml)
 VOLUME ["/app/data"]
 
 USER app

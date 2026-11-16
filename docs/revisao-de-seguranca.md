@@ -53,7 +53,7 @@ revisão; os demais são riscos aceitos ou melhorias para a próxima fase.
 | BAIXA | POTENCIAL | Token do Google no `localStorage` (padrão das dashboards irmãs). Um XSS poderia lê-lo | Mitigado pela CSP; token dura ~1 h e só tem escopo de identidade. Reavaliar sessão por cookie `httpOnly` em todas as dashboards de uma vez |
 | BAIXA | CONFIRMADO | Sem permissão por tela: todo usuário do domínio vê todas as telas | Se necessário, portar o controle de acesso por tela das dashboards irmãs |
 | BAIXA | CONFIRMADO | Cadastro de controle de estoque em arquivo JSON: não suporta mais de uma réplica do contêiner, e o histórico guarda só a última alteração de cada item | Uma réplica (como hoje). Backup do volume `logistic-dashboard-data`; o CSV da tela serve de cópia manual. Se precisar de histórico completo, levar o cadastro para um banco de dados |
-| INFO | — | `TRUST_PROXY` precisa refletir o proxy real em produção, senão o rate limit agrupa todos os usuários num IP | `docker-compose.yml` já usa 1 |
+| INFO | — | `TRUST_PROXY` precisa refletir o proxy real em produção, senão o rate limit agrupa todos os usuários num IP | `docker-compose.portainer.yml` já usa 1 |
 
 ## Testes
 
@@ -113,7 +113,7 @@ chave privada em variável de ambiente) saiu do código — um segredo a menos p
 |---|---|---|
 | BAIXA | E-mail de quem alterou fica visível para todo usuário logado | Usuários são do mesmo domínio; é o mesmo critério do cadastro de supervisores da agenda |
 | BAIXA | Sem teste automatizado de 403 para VIEWER (exigiria simular o Google) | Lógica de papel é uma comparação de ranking em `auth.middleware.ts`; conferida manualmente |
-| INFO | Volume obrigatório em produção | Sem volume o cadastro volta para a planilha oficial a cada deploy — documentado no README e já declarado no `docker-compose.yml` |
+| INFO | Volume obrigatório em produção | Sem volume o cadastro volta para a planilha oficial a cada deploy — documentado no README e já declarado no `docker-compose.portainer.yml` |
 
 ---
 

@@ -143,18 +143,36 @@ npm test
 
 ## Deploy (Docker / Portainer)
 
-A imagem é construída a partir do código (`pull_policy: build`), igual às outras
-dashboards. As variáveis vão no campo de ambiente da stack — não existe `.env` em
+Padrão de deploy da Sebratel, modelo A: o Portainer builda a imagem a partir do Git
+(`pull_policy: build`), sem registry. Arquivo da stack: **`docker-compose.portainer.yml`**.
+As variáveis vão no campo Environment da stack — não existe `.env` em staging nem em
 produção.
 
+| | Staging | Produção |
+|---|---|---|
+| Branch | `staging` | `main` |
+| Stack no Portainer | `dev_reactjs_logisticdashboard` (= repositório em minúsculas) | idem, no host de produção |
+| Container | `dev_reactjs_logisticdashboard-frontend-1` | idem |
+| Porta do host | **3012** (Frontend / Web UI, a mesma nos dois — planilha de portas) | **3012** |
+
 ```bash
-docker compose up -d --build
+docker compose -f docker-compose.portainer.yml up -d --build
 ```
 
-- Porta publicada: `HOST_PORT` (padrão 8083) → 8080 no contêiner.
-- Memória: o modelo tem ~1,7 mi de linhas; `NODE_OPTIONS=--max-old-space-size=2048`
-  com limite de 3 GB no contêiner.
-- Healthcheck: `GET /api/v1/health`.
+- **Versão:** `1.1.0`, a mesma no `package.json` (raiz, `server/`, `web/`), nos
+  `package-lock.json` e na tag da imagem (`logistic-dashboard:${APP_VERSION:-1.1.0}`);
+  aparece no Portainer e no `/api/v1/health`. Todo commit que sobe para um ambiente leva
+  versão **maior** que a dele: troque com `npm run version:set -- X.Y.Z` (patch = correção,
+  minor = funcionalidade, major = quebra).
+- Porta publicada: `FRONTEND_PORT` (padrão 3012) → 8080 no contêiner. Trocar a porta exige
+  trocar o upstream do Nginx Proxy Manager no mesmo deploy (senão 502).
+- Memória: pico de ~1,1 GB na carga; `NODE_OPTIONS=--max-old-space-size=2048` com
+  limite de 3 GB no contêiner (`MEM_LIMIT`).
+- Healthcheck: `GET /api/v1/health` (`{ status, version, modelLoaded }`).
+- **Staging lê o mesmo Voalle de produção** (só leitura; não há ERP de staging): para não
+  dobrar a carga no banco, a stack de staging usa cadência mais espaçada
+  (`REFRESH_INTERVAL_MS=10800000`, `LIVE_REFRESH_INTERVAL_MS=300000`,
+  `LAB_REFRESH_INTERVAL_MS=21600000`).
 - `TRUST_PROXY=1` atrás do proxy reverso (o rate limit precisa do IP real).
 - No Google Cloud, a origem pública do dashboard precisa estar nas **origens
   JavaScript autorizadas** do cliente OAuth.
@@ -368,7 +386,7 @@ cadastro. No primeiro boot, sem o arquivo, ele é criado a partir de
 `server/src/modules/stock-controls/seed/stock-controls.seed.json` (gerado da planilha
 oficial; sem dado pessoal).
 
-**Em produção o diretório precisa ser um volume** (`docker-compose.yml` já monta
+**Em produção o diretório precisa ser um volume** (`docker-compose.portainer.yml` já monta
 `logistic-dashboard-data` em `/app/data`); sem volume, cada deploy voltaria o
 cadastro para a planilha oficial.
 
