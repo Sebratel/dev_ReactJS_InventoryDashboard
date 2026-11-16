@@ -3,7 +3,7 @@ import {
   createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode,
 } from 'react';
 import {
-  endSession, getAccessToken, initGoogleClient, onSessionEnd, signInWithGoogle, type SessionEndReason,
+  endSession, hasSession, initAuth, onSessionEnd, signInWithGoogle, type SessionEndReason,
 } from '../services/authService';
 import { ApiError, onAccessDenied } from '../services/httpClient';
 import { fetchAuthConfig, fetchCurrentUser, recordLogin } from '../services/sessionService';
@@ -64,8 +64,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           setUser(await fetchCurrentUser());
           return;
         }
-        await initGoogleClient(cfg.clientId).catch(() => undefined);
-        if (getAccessToken()) {
+        if (cfg.firebase) await initAuth(cfg.firebase).catch(() => undefined);
+        if (hasSession()) {
           const me = await fetchCurrentUser().catch(() => null);
           if (alive && me) setUser(me);
         }
@@ -114,9 +114,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, [signedIn]);
 
   const signIn = useCallback(async () => {
-    if (!config?.clientId) throw new Error('Login com Google não configurado no servidor.');
-    await initGoogleClient(config.clientId);
-    await signInWithGoogle();
+    if (!config?.firebase) throw new Error('Login com Google não configurado no servidor.');
+    await initAuth(config.firebase);
+    await signInWithGoogle(config.allowedDomain);
     try {
       const me = await fetchCurrentUser();
       setEndReason(null);

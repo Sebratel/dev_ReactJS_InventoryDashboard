@@ -29,10 +29,18 @@ export interface SessionUser {
   managementAccess: boolean;
 }
 
+/** Configuração web do Firebase (pública), entregue pelo servidor em /auth/config. */
+export interface FirebasePublicConfig {
+  apiKey: string;
+  authDomain: string;
+  projectId: string;
+}
+
 export interface AuthConfig {
   enabled: boolean;
-  clientId: string;
   allowedDomain: string;
+  /** null com o login desligado */
+  firebase: FirebasePublicConfig | null;
 }
 
 export interface SourceInfo {

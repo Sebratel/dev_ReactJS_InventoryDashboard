@@ -70,7 +70,7 @@ export default function LoginPage() {
             {(error || bootError) && (
               <div className="banner error" role="alert"><Icon name="alerta" size={14} /> {error ?? bootError}</div>
             )}
-            <button type="button" className="botao-google" onClick={click} disabled={busy || !config?.clientId}>
+            <button type="button" className="botao-google" onClick={click} disabled={busy || !config?.firebase}>
               <span className="marca">{busy ? <span className="spin"><Icon name="atualizar" size={16} /></span> : <GoogleMark />}</span>
               {busy ? 'Autenticando…' : 'Entrar com Google'}
             </button>

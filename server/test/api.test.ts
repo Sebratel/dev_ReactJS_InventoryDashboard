@@ -6,11 +6,12 @@ import { after, before, describe, it } from 'node:test';
 
 /**
  * Testes de contrato da API, com o app montado sem banco (createApp não
- * dispara a carga). O login fica ligado com um ID de cliente fictício para
+ * dispara a carga). O login fica ligado com um projeto Firebase fictício para
  * provar que nenhuma rota de dados responde sem token.
  */
 process.env.AUTH_ENABLED = 'true';
-process.env.GOOGLE_CLIENT_ID = 'test-client.apps.googleusercontent.com';
+process.env.FIREBASE_API_KEY = 'chave-web-ficticia';
+process.env.FIREBASE_PROJECT_ID = 'projeto-teste';
 process.env.PUBLIC_DIR = '/caminho/que/nao/existe';
 
 let server: Server;
@@ -41,7 +42,23 @@ describe('API', () => {
 
   it('configuração do login é pública e não tem segredo', async () => {
     const body = await (await fetch(`${base}/auth/config`)).json() as { data: Record<string, unknown> };
-    assert.deepEqual(Object.keys(body.data).sort(), ['allowedDomain', 'clientId', 'enabled']);
+    assert.deepEqual(Object.keys(body.data).sort(), ['allowedDomain', 'enabled', 'firebase']);
+    // só a configuração web do Firebase, que é pública; authDomain padrão = <projeto>.firebaseapp.com
+    assert.deepEqual(body.data.firebase, {
+      apiKey: 'chave-web-ficticia',
+      projectId: 'projeto-teste',
+      authDomain: 'projeto-teste.firebaseapp.com',
+    });
+  });
+
+  it('CSP libera o login do Firebase e nada além do necessário', async () => {
+    const csp = (await fetch(`${base}/health`)).headers.get('content-security-policy') ?? '';
+    const directive = (name: string): string => csp.split(';').map((d) => d.trim()).find((d) => d.startsWith(`${name} `)) ?? '';
+    assert.match(directive('frame-src'), /https:\/\/projeto-teste\.firebaseapp\.com/);
+    assert.match(directive('script-src'), /https:\/\/apis\.google\.com/);
+    assert.match(directive('connect-src'), /https:\/\/identitytoolkit\.googleapis\.com/);
+    assert.match(directive('connect-src'), /https:\/\/securetoken\.googleapis\.com/);
+    assert.doesNotMatch(csp, /accounts\.google\.com\/gsi/);
   });
 
   it('relatório sem token devolve 401 no envelope padrão', async () => {

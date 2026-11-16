@@ -112,9 +112,12 @@ const EnvSchema = z.object({
   // No Docker é um volume: sem ele, recriar o contêiner apaga o cadastro.
   DATA_PATH: z.string().optional(),
 
-  // Autenticação (login com Google)
+  // Autenticação (login com Google pelo Firebase Authentication)
   AUTH_ENABLED: booleanFlag,
-  GOOGLE_CLIENT_ID: z.string().optional(),
+  FIREBASE_API_KEY: z.string().optional(),
+  FIREBASE_PROJECT_ID: z.string().regex(/^[a-z0-9-]{4,40}$/, 'ID do projeto Firebase (ex.: meu-projeto-a1b2c)').optional(),
+  // padrão: <projeto>.firebaseapp.com
+  FIREBASE_AUTH_DOMAIN: z.string().regex(/^[a-z0-9.-]+$/i, 'só o domínio, sem https://').optional(),
   ALLOWED_DOMAIN: z.string().default('sebratel.com.br'),
   // administradores "de fábrica": só valem enquanto não houver NENHUM admin
   // salvo no cadastro de usuários (instalação nova) — depois disso, quem decide
@@ -134,9 +137,11 @@ const parsed = EnvSchema.safeParse({
   DB_VOALLE_PASSWORD: pick('DB_VOALLE_PASSWORD', 'DB_ELLEVEN_PASSWORD'),
   DB_VOALLE_SCHEMA: pick('DB_VOALLE_SCHEMA', 'DB_ELLEVEN_SCHEMA'),
   DB_VOALLE_SSL: pick('DB_VOALLE_SSL', 'DB_ELLEVEN_SSL'),
-  // o ID do cliente OAuth é público (vai para o navegador de qualquer jeito);
-  // aceitar o nome com prefixo VITE_ evita duplicar a mesma chave no .env
-  GOOGLE_CLIENT_ID: pick('GOOGLE_CLIENT_ID', 'VITE_GOOGLE_CLIENT_ID'),
+  // a configuração web do Firebase é pública (vai para o navegador de qualquer
+  // jeito); aceitar o nome com prefixo VITE_ evita duplicar a mesma chave no .env
+  FIREBASE_API_KEY: pick('FIREBASE_API_KEY', 'VITE_FIREBASE_API_KEY'),
+  FIREBASE_PROJECT_ID: pick('FIREBASE_PROJECT_ID', 'VITE_FIREBASE_PROJECT_ID'),
+  FIREBASE_AUTH_DOMAIN: pick('FIREBASE_AUTH_DOMAIN', 'VITE_FIREBASE_AUTH_DOMAIN'),
 });
 
 if (!parsed.success) {
@@ -205,11 +210,16 @@ export const appConfig = {
   dataPath: env.DATA_PATH ? resolve(env.DATA_PATH) : join(SERVER_ROOT, 'data'),
 
   auth: {
-    // sem o ID do cliente não existe login: subir "habilitado" sem ele travaria
+    // sem o projeto Firebase não existe login: subir "habilitado" sem ele travaria
     // todo mundo do lado de fora sem dizer por quê
-    enabled: authEnabled && Boolean(env.GOOGLE_CLIENT_ID),
+    enabled: authEnabled && Boolean(env.FIREBASE_API_KEY && env.FIREBASE_PROJECT_ID),
     requested: authEnabled,
-    clientId: env.GOOGLE_CLIENT_ID ?? '',
+    /** configuração web do Firebase (pública): o front inicializa o login com ela */
+    firebase: {
+      apiKey: env.FIREBASE_API_KEY ?? '',
+      projectId: env.FIREBASE_PROJECT_ID ?? '',
+      authDomain: (env.FIREBASE_AUTH_DOMAIN ?? (env.FIREBASE_PROJECT_ID ? `${env.FIREBASE_PROJECT_ID}.firebaseapp.com` : '')).toLowerCase(),
+    },
     allowedDomain: env.ALLOWED_DOMAIN.toLowerCase().replace(/^@/, ''),
     bootstrapAdminEmails: emailList(env.ADMIN_EMAILS),
   },

@@ -53,9 +53,10 @@ jobs:
     env:
       # Variáveis fictícias. Sem credencial do Voalle/MariaDB o servidor sobe sem banco: as fontes
       # falham e o health continua UP. A imagem roda com NODE_ENV=production, e nele o servidor se
-      # recusa a subir com login ligado sem GOOGLE_CLIENT_ID: um ID fictício mantém o login ligado,
-      # como em produção (o health é público, nenhuma rota de dados é chamada).
-      GOOGLE_CLIENT_ID: ci-smoke.apps.googleusercontent.com
+      # recusa a subir com login ligado sem o projeto Firebase: valores fictícios mantêm o login
+      # ligado, como em produção (o health é público, nenhuma rota de dados é chamada).
+      FIREBASE_API_KEY: ci-smoke-chave-web
+      FIREBASE_PROJECT_ID: ci-smoke
       ADMIN_EMAILS: ci-smoke@sebratel.com.br
     steps:
       - uses: actions/checkout@v4

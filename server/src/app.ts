@@ -28,7 +28,7 @@ export function createApp(): Express {
   app.disable('x-powered-by');
   if (appConfig.trustProxy > 0) app.set('trust proxy', appConfig.trustProxy);
 
-  app.use(securityHeaders());
+  app.use(securityHeaders(appConfig.auth.firebase.authDomain));
   app.use(compression());
   app.use(express.json({ limit: '10kb' }));
 
