@@ -7,7 +7,7 @@
  */
 export type Theme = 'light' | 'dark';
 
-const STORAGE_KEY = 'logistic-dashboard.theme';
+const STORAGE_KEY = 'inventory-dashboard.theme';
 
 export function getPreferredTheme(): Theme {
   try {

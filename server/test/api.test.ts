@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
 import type { Server } from 'node:http';
 import { after, before, describe, it } from 'node:test';
@@ -32,7 +33,10 @@ describe('API', () => {
     assert.equal(res.status, 200);
     const body = await res.json() as { success: boolean; data: Record<string, unknown> };
     assert.equal(body.success, true);
-    assert.deepEqual(Object.keys(body.data).sort(), ['modelLoaded', 'status']);
+    assert.deepEqual(Object.keys(body.data).sort(), ['modelLoaded', 'status', 'version']);
+    // a versão no ar é a do package.json (o Portainer e o /health mostram a mesma)
+    const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { version: string };
+    assert.equal(body.data.version, pkg.version);
   });
 
   it('configuração do login é pública e não tem segredo', async () => {

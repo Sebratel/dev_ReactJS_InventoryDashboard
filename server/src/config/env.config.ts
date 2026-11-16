@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, parse, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import dotenv from 'dotenv';
@@ -150,7 +150,18 @@ const emailList = (value: string): string[] => value.split(',').map((e) => e.tri
 
 const authEnabled = env.AUTH_ENABLED ?? true;
 
+/** Versão da aplicação: a do package.json do servidor (`server/` local, `/app` na imagem). */
+function readAppVersion(): string {
+  try {
+    const pkg = JSON.parse(readFileSync(join(SERVER_ROOT, 'package.json'), 'utf8')) as { version?: unknown };
+    return typeof pkg.version === 'string' ? pkg.version : '0.0.0';
+  } catch {
+    return '0.0.0';
+  }
+}
+
 export const appConfig = {
+  version: readAppVersion(),
   env: env.NODE_ENV,
   isProduction: env.NODE_ENV === 'production',
   port: env.PORT,

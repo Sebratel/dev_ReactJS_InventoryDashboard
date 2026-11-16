@@ -1,22 +1,36 @@
+# Stack do Portainer (modelo A do padrão de deploy: o Portainer builda a imagem a partir do Git).
+# Staging: branch `staging`; produção: branch `main`. Mesmo arquivo nos dois, com o
+# Environment de cada stack (segredos e cadência) no painel do Portainer.
+name: dev_reactjs_inventorydashboard   # = nome do repositório em minúsculas = nome da stack no Portainer
+
 services:
-  logistic-dashboard:
+  # papel: a SPA e a API dela num contêiner só (o NPM aponta para cá).
+  # Sem container_name: o Compose nomeia <stack>-frontend-1.
+  frontend:
     build:
       context: .
       dockerfile: Dockerfile
-    image: logistic-dashboard:1.0.0
+      args:
+        APP_VERSION: ${APP_VERSION:-1.2.0}
+    # a versão vai na tag da imagem: o Portainer mostra qual versão está no ar
+    image: inventory-dashboard:${APP_VERSION:-1.2.0}
     # a imagem é construída aqui, não baixada de registro: sem isto o "Re-pull
     # image" do Portainer tenta o Docker Hub e o redeploy falha
     pull_policy: build
-    container_name: logistic-dashboard
+    labels:
+      org.opencontainers.image.version: ${APP_VERSION:-1.2.0}
     restart: unless-stopped
+    # Frontend / Web UI (3000–3099): 3012 em staging e em produção (planilha de portas)
     ports:
-      - "${HOST_PORT:-8083}:8080"
+      - "${FRONTEND_PORT:-3012}:8080"
+    # ~1,1 GB medidos no pico da carga (10/11/2026); o heap do Node fica em ~70% do limite
+    mem_limit: ${MEM_LIMIT:-3g}
+    memswap_limit: ${MEM_LIMIT:-3g}
     environment:
       TZ: America/Sao_Paulo
       PORT: 8080
       # atrás do proxy reverso: 1 salto (o rate limit precisa do IP real)
       TRUST_PROXY: ${TRUST_PROXY:-1}
-      # ~70% do limite do contêiner: o modelo em memória tem ~1,7 milhão de linhas
       NODE_OPTIONS: ${NODE_OPTIONS:---max-old-space-size=2048}
 
       # ---- Voalle (PostgreSQL) — no Power BI era o DSN "dbVoalle" ----
@@ -32,7 +46,7 @@ services:
       DB_MARIA_PASSWORD: ${DB_MARIA_PASSWORD}
       DB_MARIA_PORT: ${DB_MARIA_PORT:-3306}
 
-      # ---- cadastro de controle de estoque (fica no volume abaixo) ----
+      # ---- dados do app (controle de estoque, usuários, log) — no volume abaixo ----
       DATA_PATH: /app/data
 
       # ---- login com Google ----
@@ -43,7 +57,7 @@ services:
       # (instalação nova); depois, permissões são dadas na tela de Administração
       ADMIN_EMAILS: ${ADMIN_EMAILS:-}
 
-      # ---- cadência ----
+      # ---- cadência (em staging, mais espaçada: ver README, "Deploy") ----
       REFRESH_INTERVAL_MS: ${REFRESH_INTERVAL_MS:-3600000}
       # tela de Compras: saldo de itens e pedidos relidos a cada minuto (~1 s de consulta)
       LIVE_REFRESH_INTERVAL_MS: ${LIVE_REFRESH_INTERVAL_MS:-60000}
@@ -51,9 +65,9 @@ services:
       LAB_REFRESH_INTERVAL_MS: ${LAB_REFRESH_INTERVAL_MS:-10800000}
       QUERY_TIMEOUT_MS: ${QUERY_TIMEOUT_MS:-900000}
     volumes:
-      # cadastro de controle de estoque, usuários/permissões e log de edições:
-      # sem volume, cada deploy apagaria tudo (e o cadastro voltaria à planilha oficial)
-      - logistic-dashboard-data:/app/data
+      # controle de estoque, usuários/permissões e log de edições: sem volume,
+      # cada deploy apagaria tudo (e o cadastro voltaria à planilha oficial)
+      - inventory-dashboard-data:/app/data
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/api/v1/health"]
       interval: 30s
@@ -65,10 +79,6 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
-    deploy:
-      resources:
-        limits:
-          memory: ${MEM_LIMIT:-3g}
 
 volumes:
-  logistic-dashboard-data:
+  inventory-dashboard-data:

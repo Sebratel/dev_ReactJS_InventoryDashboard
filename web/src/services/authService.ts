@@ -9,7 +9,7 @@
  */
 
 const GSI_SRC = 'https://accounts.google.com/gsi/client';
-const STORAGE_KEY = 'logistic-dashboard.auth';
+const STORAGE_KEY = 'inventory-dashboard.auth';
 const RENEW_BEFORE_MS = 5 * 60_000;
 
 interface TokenResponse {

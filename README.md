@@ -6,6 +6,10 @@ uma aplicação web (React + Vite no front, Node + Express no back), no mesmo pa
 visual e de arquitetura das demais dashboards da Sebratel (COM · Gestão Comercial,
 DEVINTEL, Financeiro). Os `.pbip` de origem não são versionados: ficam só na máquina de quem migra (o `.gitignore` os ignora).
 
+Nome oficial do projeto: **InventoryDashboard** — repositório `dev_ReactJS_InventoryDashboard`,
+pacotes e imagem `inventory-dashboard` (até 16/11/2026, `dev_ReactJS_logisticDashboard` e
+`logistic-dashboard`). Na tela, o painel continua se chamando **Estoque Sebratel**.
+
 Também traz, como abas próprias, os relatórios Power BI **"CMP - Lançamento e Saldos"**
 (Compras · Lançamento e saldos), **"CTR - Movimentação Equipamentos para Campo"**
 (Controle · Equipamentos para campo), as duas páginas do **"LOG - Objetos em Carga"**
@@ -143,25 +147,90 @@ npm test
 
 ## Deploy (Docker / Portainer)
 
-A imagem é construída a partir do código (`pull_policy: build`), igual às outras
-dashboards. As variáveis vão no campo de ambiente da stack — não existe `.env` em
+Padrão de deploy da Sebratel, modelo A: o Portainer builda a imagem a partir do Git
+(`pull_policy: build`), sem registry. Arquivo da stack: **`docker-compose.portainer.yml`**.
+As variáveis vão no campo Environment da stack — não existe `.env` em staging nem em
 produção.
 
+| | Staging | Produção |
+|---|---|---|
+| Branch | `staging` | `main` |
+| Stack no Portainer | `dev_reactjs_inventorydashboard` (= repositório em minúsculas) | idem, no host de produção |
+| Container | `dev_reactjs_inventorydashboard-frontend-1` | idem |
+| Porta do host | **3012** (Frontend / Web UI, a mesma nos dois — planilha de portas) | **3012** |
+
 ```bash
-docker compose up -d --build
+docker compose -f docker-compose.portainer.yml up -d --build
 ```
 
-- Porta publicada: `HOST_PORT` (padrão 8083) → 8080 no contêiner.
-- Memória: o modelo tem ~1,7 mi de linhas; `NODE_OPTIONS=--max-old-space-size=2048`
-  com limite de 3 GB no contêiner.
-- Healthcheck: `GET /api/v1/health`.
+- **Versão:** `1.2.0`, a mesma no `package.json` (raiz, `server/`, `web/`), nos
+  `package-lock.json` e na tag da imagem (`inventory-dashboard:${APP_VERSION:-1.2.0}`);
+  aparece no Portainer e no `/api/v1/health`. Todo commit que sobe para um ambiente leva
+  versão **maior** que a dele: troque com `npm run version:set -- X.Y.Z` (patch = correção,
+  minor = funcionalidade, major = quebra).
+- Porta publicada: `FRONTEND_PORT` (padrão 3012) → 8080 no contêiner. Trocar a porta exige
+  trocar o upstream do Nginx Proxy Manager no mesmo deploy (senão 502).
+- Memória: pico de ~1,1 GB na carga; `NODE_OPTIONS=--max-old-space-size=2048` com
+  limite de 3 GB no contêiner (`MEM_LIMIT`).
+- Healthcheck: `GET /api/v1/health` (`{ status, version, modelLoaded }`).
+- **Staging lê o mesmo Voalle de produção** (só leitura; não há ERP de staging): para não
+  dobrar a carga no banco, a stack de staging usa cadência mais espaçada
+  (`REFRESH_INTERVAL_MS=10800000`, `LIVE_REFRESH_INTERVAL_MS=300000`,
+  `LAB_REFRESH_INTERVAL_MS=21600000`).
 - `TRUST_PROXY=1` atrás do proxy reverso (o rate limit precisa do IP real).
 - No Google Cloud, a origem pública do dashboard precisa estar nas **origens
   JavaScript autorizadas** do cliente OAuth.
-- **Volume `logistic-dashboard-data` em `/app/data`**: guarda o cadastro de controle de
+- **Volume `inventory-dashboard-data` em `/app/data`**: guarda o cadastro de controle de
   estoque, os usuários com as permissões e o log de edições. Não remova o volume ao
-  recriar a stack.
+  recriar a stack. O Compose prefixa o volume com o nome da stack
+  (`dev_reactjs_inventorydashboard_inventory-dashboard-data`): uma stack com outro nome
+  (ex.: a antiga `dev_reactjs_logisticdashboard`) tem outro volume, e o cadastro dela só
+  passa para a nova se for copiado.
 - `ADMIN_EMAILS`: admin(s) de fábrica — ver [Administração](#administração).
+
+### CI (GitHub Actions)
+
+O workflow [`.github/workflows/ci.yml`](.github/workflows/ci.yml) é o portão de validação:
+roda em todo pull request para `main` ou `staging` e em todo push nessas branches (e à mão,
+em *Actions → CI → Run workflow*). Ele não faz deploy: quem builda e sobe é o Portainer, a
+partir do Git.
+
+| Job | O que faz |
+|---|---|
+| `aplicacao` | `npm run install:all`, `npm run typecheck`, `npm test` e `npm run build` (Node 24, o mesmo da imagem) |
+| `imagem` | builda a imagem do `Dockerfile` com o `docker-compose.portainer.yml`, sobe a stack com `up -d --wait` (espera o healthcheck, como o Portainer) e confere o `GET /api/v1/health`: `status` = `UP` e `version` = versão do `package.json`, e a imagem com essa tag e esse label. Roda com variáveis fictícias, sem credencial do Voalle nem do MariaDB: as fontes falham e o health continua `UP` |
+| `validacoes` | `.github/scripts/validate-version.py`: versão `X.Y.Z` igual no `package.json`, nos `package-lock.json` e no compose, e **maior** que a do ambiente (no PR, a da branch-alvo; no push, a do commit anterior). `.github/scripts/validate-compose.py`: nome da stack, nomes de serviço, gateway por ambiente e faixa de portas (`--strict-ports`), para staging e produção |
+| `ci-ok` | agrega os três: só fica verde se nenhum falhou. É o único check obrigatório |
+
+Os dois validadores são cópias dos scripts-modelo do plugin Sebratel Backend (skill
+`cicd-deploy-backend`); atualize-os copiando de lá, não editando aqui. Pendência antiga de
+compose que não dá para corrigir agora vai em `.github/compose-exceptions.txt`, uma linha por
+pendência, com o motivo (hoje está vazio).
+
+Consequência prática: **todo PR que muda alguma coisa sobe a versão** com
+`npm run version:set -- X.Y.Z`, senão o `validacoes` reprova. Dois PRs abertos com a mesma
+versão: o segundo a mergear reprova e precisa de uma versão maior.
+
+Para rodar o mesmo que o CI antes de abrir o PR (o job `imagem` precisa de Docker):
+
+```bash
+npm run install:all && npm run typecheck && npm test && npm run build
+```
+
+```bash
+BASE_REF=origin/staging python .github/scripts/validate-version.py
+```
+
+```bash
+python .github/scripts/validate-compose.py --repo dev_ReactJS_InventoryDashboard --env staging --strict-ports --exceptions .github/compose-exceptions.txt docker-compose.portainer.yml
+```
+
+> **Para o administrador do repositório:** em *Settings → Rules* (ou *Branches*), marque o
+> status check **`ci-ok`** como obrigatório (*Require status checks to pass*) nas branches
+> **`main`** e **`staging`**. Na `main`, mantenha também o pull request obrigatório com
+> 1 aprovação e o bloqueio de push direto e de force push. Marque só o `ci-ok`, não os jobs
+> um a um: job novo entra no `needs` dele sem mexer na regra. O check só aparece na lista
+> depois que o workflow rodar uma vez.
 
 ## Compras · Lançamento e saldos
 
@@ -368,8 +437,8 @@ cadastro. No primeiro boot, sem o arquivo, ele é criado a partir de
 `server/src/modules/stock-controls/seed/stock-controls.seed.json` (gerado da planilha
 oficial; sem dado pessoal).
 
-**Em produção o diretório precisa ser um volume** (`docker-compose.yml` já monta
-`logistic-dashboard-data` em `/app/data`); sem volume, cada deploy voltaria o
+**Em produção o diretório precisa ser um volume** (`docker-compose.portainer.yml` já monta
+`inventory-dashboard-data` em `/app/data`); sem volume, cada deploy voltaria o
 cadastro para a planilha oficial.
 
 ## Administração
