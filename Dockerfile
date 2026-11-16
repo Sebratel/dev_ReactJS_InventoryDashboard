@@ -18,7 +18,7 @@ RUN npm run build && npm prune --omit=dev
 FROM node:24-alpine
 # versão da aplicação (a mesma do package.json e da tag da imagem no compose)
 ARG APP_VERSION=0.0.0
-LABEL org.opencontainers.image.title="logistic-dashboard" \
+LABEL org.opencontainers.image.title="inventory-dashboard" \
       org.opencontainers.image.version="${APP_VERSION}"
 ENV NODE_ENV=production \
     TZ=America/Sao_Paulo \

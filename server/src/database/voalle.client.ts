@@ -44,7 +44,7 @@ function getPool(): pg.Pool {
       // do TCP mantém a conexão viva aos olhos deles
       keepAlive: true,
       keepAliveInitialDelayMillis: 30_000,
-      application_name: 'logistic-dashboard',
+      application_name: 'inventory-dashboard',
       ...(voalle.schema ? { options: `-c search_path=${voalle.schema}` } : {}),
     });
     pool.on('error', (err) => logger.error('voalle', `erro no pool: ${err.message}`));

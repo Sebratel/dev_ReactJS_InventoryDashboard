@@ -24,7 +24,7 @@
       "runtimeExecutable": "node",
       "runtimeArgs": [
         "--import",
-        "file:///C:/Scripts/github/dev_ReactJS_logisticDashboard/server/node_modules/tsx/dist/loader.mjs",
+        "./server/node_modules/tsx/dist/loader.mjs",
         "server/src/main.ts"
       ],
       "env": {

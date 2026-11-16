@@ -80,12 +80,12 @@ jobs:
             cat health.json; exit 1
           fi
           # a tag e o label da imagem são o que o Portainer mostra
-          label=$(docker image inspect "logistic-dashboard:$esperada" \
+          label=$(docker image inspect "inventory-dashboard:$esperada" \
             --format '{{ index .Config.Labels "org.opencontainers.image.version" }}')
           if [ "$label" != "$esperada" ]; then
-            echo "::error::imagem logistic-dashboard:$esperada com label de versão '$label' (esperado $esperada)."; exit 1
+            echo "::error::imagem inventory-dashboard:$esperada com label de versão '$label' (esperado $esperada)."; exit 1
           fi
-          echo "Health OK: status=$status version=$versao; imagem logistic-dashboard:$esperada"
+          echo "Health OK: status=$status version=$versao; imagem inventory-dashboard:$esperada"
 
       - name: Logs da stack
         if: failure()
@@ -131,7 +131,7 @@ jobs:
         run: |
           for ambiente in staging production; do
             python .github/scripts/validate-compose.py \
-              --repo dev_ReactJS_logisticDashboard \
+              --repo dev_ReactJS_InventoryDashboard \
               --env "$ambiente" \
               --strict-ports \
               --exceptions .github/compose-exceptions.txt \

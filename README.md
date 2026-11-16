@@ -6,6 +6,10 @@ uma aplicação web (React + Vite no front, Node + Express no back), no mesmo pa
 visual e de arquitetura das demais dashboards da Sebratel (COM · Gestão Comercial,
 DEVINTEL, Financeiro). Os `.pbip` de origem não são versionados: ficam só na máquina de quem migra (o `.gitignore` os ignora).
 
+Nome oficial do projeto: **InventoryDashboard** — repositório `dev_ReactJS_InventoryDashboard`,
+pacotes e imagem `inventory-dashboard` (até 16/11/2026, `dev_ReactJS_logisticDashboard` e
+`logistic-dashboard`). Na tela, o painel continua se chamando **Estoque Sebratel**.
+
 Também traz, como abas próprias, os relatórios Power BI **"CMP - Lançamento e Saldos"**
 (Compras · Lançamento e saldos), **"CTR - Movimentação Equipamentos para Campo"**
 (Controle · Equipamentos para campo), as duas páginas do **"LOG - Objetos em Carga"**
@@ -151,16 +155,16 @@ produção.
 | | Staging | Produção |
 |---|---|---|
 | Branch | `staging` | `main` |
-| Stack no Portainer | `dev_reactjs_logisticdashboard` (= repositório em minúsculas) | idem, no host de produção |
-| Container | `dev_reactjs_logisticdashboard-frontend-1` | idem |
+| Stack no Portainer | `dev_reactjs_inventorydashboard` (= repositório em minúsculas) | idem, no host de produção |
+| Container | `dev_reactjs_inventorydashboard-frontend-1` | idem |
 | Porta do host | **3012** (Frontend / Web UI, a mesma nos dois — planilha de portas) | **3012** |
 
 ```bash
 docker compose -f docker-compose.portainer.yml up -d --build
 ```
 
-- **Versão:** `1.1.1`, a mesma no `package.json` (raiz, `server/`, `web/`), nos
-  `package-lock.json` e na tag da imagem (`logistic-dashboard:${APP_VERSION:-1.1.1}`);
+- **Versão:** `1.2.0`, a mesma no `package.json` (raiz, `server/`, `web/`), nos
+  `package-lock.json` e na tag da imagem (`inventory-dashboard:${APP_VERSION:-1.2.0}`);
   aparece no Portainer e no `/api/v1/health`. Todo commit que sobe para um ambiente leva
   versão **maior** que a dele: troque com `npm run version:set -- X.Y.Z` (patch = correção,
   minor = funcionalidade, major = quebra).
@@ -176,9 +180,12 @@ docker compose -f docker-compose.portainer.yml up -d --build
 - `TRUST_PROXY=1` atrás do proxy reverso (o rate limit precisa do IP real).
 - No Google Cloud, a origem pública do dashboard precisa estar nas **origens
   JavaScript autorizadas** do cliente OAuth.
-- **Volume `logistic-dashboard-data` em `/app/data`**: guarda o cadastro de controle de
+- **Volume `inventory-dashboard-data` em `/app/data`**: guarda o cadastro de controle de
   estoque, os usuários com as permissões e o log de edições. Não remova o volume ao
-  recriar a stack.
+  recriar a stack. O Compose prefixa o volume com o nome da stack
+  (`dev_reactjs_inventorydashboard_inventory-dashboard-data`): uma stack com outro nome
+  (ex.: a antiga `dev_reactjs_logisticdashboard`) tem outro volume, e o cadastro dela só
+  passa para a nova se for copiado.
 - `ADMIN_EMAILS`: admin(s) de fábrica — ver [Administração](#administração).
 
 ### CI (GitHub Actions)
@@ -215,7 +222,7 @@ BASE_REF=origin/staging python .github/scripts/validate-version.py
 ```
 
 ```bash
-python .github/scripts/validate-compose.py --repo dev_ReactJS_logisticDashboard --env staging --strict-ports --exceptions .github/compose-exceptions.txt docker-compose.portainer.yml
+python .github/scripts/validate-compose.py --repo dev_ReactJS_InventoryDashboard --env staging --strict-ports --exceptions .github/compose-exceptions.txt docker-compose.portainer.yml
 ```
 
 > **Para o administrador do repositório:** em *Settings → Rules* (ou *Branches*), marque o
@@ -431,7 +438,7 @@ cadastro. No primeiro boot, sem o arquivo, ele é criado a partir de
 oficial; sem dado pessoal).
 
 **Em produção o diretório precisa ser um volume** (`docker-compose.portainer.yml` já monta
-`logistic-dashboard-data` em `/app/data`); sem volume, cada deploy voltaria o
+`inventory-dashboard-data` em `/app/data`); sem volume, cada deploy voltaria o
 cadastro para a planilha oficial.
 
 ## Administração
