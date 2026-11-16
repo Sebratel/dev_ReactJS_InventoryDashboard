@@ -1,6 +1,6 @@
 import axios, { AxiosError, type InternalAxiosRequestConfig } from 'axios';
 import { API_BASE_URL } from '../config';
-import { endSession, getAccessToken, renewAccessToken } from './authService';
+import { endSession, getIdToken, renewIdToken } from './authService';
 
 /**
  * O ÚNICO cliente HTTP da aplicação. Toda chamada passa por aqui para levar o
@@ -14,8 +14,8 @@ export const httpClient = axios.create({
   paramsSerializer: { indexes: null },
 });
 
-httpClient.interceptors.request.use((config) => {
-  const token = getAccessToken();
+httpClient.interceptors.request.use(async (config) => {
+  const token = await getIdToken();
   if (token) config.headers.set('Authorization', `Bearer ${token}`);
   return config;
 });
@@ -44,7 +44,7 @@ httpClient.interceptors.response.use(undefined, async (error: AxiosError) => {
   if (error.response?.status === 401 && config && !config.retriedAfterRenewal) {
     config.retriedAfterRenewal = true;
     try {
-      await renewAccessToken();
+      await renewIdToken();
       return await httpClient.request(config);
     } catch {
       endSession('EXPIRED');

@@ -115,7 +115,31 @@ npm run install:all
 O servidor lê o `.env` da raiz do projeto e, **fora de produção**, também os `.env`
 das pastas acima dele — é assim que ele usa o `.env` compartilhado da pasta de
 trabalho sem copiar credenciais para cá. Nomes aceitos: `DB_VOALLE_*` ou `DB_ELLEVEN_*`,
-`GOOGLE_CLIENT_ID` ou `VITE_GOOGLE_CLIENT_ID`. Modelo em `.env.example`.
+`FIREBASE_*` ou `VITE_FIREBASE_*`. Modelo em `.env.example`.
+
+### Login (Firebase Authentication)
+
+O login com Google passa pelo **Firebase Authentication** do projeto Firebase
+`inventory-dashboard-a123a`, próprio do InventoryDashboard (criado pelo administrador em
+16/11/2026; o provedor Google já vem ligado). O painel usa só a autenticação do Firebase —
+nada de Analytics, Firestore ou outro produto.
+
+- **Variáveis:** `FIREBASE_API_KEY` e `FIREBASE_PROJECT_ID`, da configuração web do app
+  Firebase (*Configurações do projeto → Seus apps*); `FIREBASE_AUTH_DOMAIN` é opcional
+  (padrão `<projeto>.firebaseapp.com`). São públicas por natureza — vão para o navegador
+  de qualquer jeito —, mas ficam fora do git: o front as recebe do servidor em
+  `GET /api/v1/auth/config`, e a mesma imagem serve staging e produção.
+- **Domínios autorizados:** cada endereço de onde se entra precisa estar em *Firebase →
+  Authentication → Settings → Authorized domains*: `inventario-staging-dashboard.sebratel.net.br`
+  (staging), `inventario-dashboard.sebratel.net.br` (produção) e, para desenvolver,
+  `localhost`. Fora da lista, o popup do Google responde `auth/unauthorized-domain`.
+- **Servidor:** confere o ID token do Firebase em toda requisição — assinatura com as
+  chaves públicas do Firebase, `iss`/`aud` do nosso projeto, vencimento, login pelo Google
+  (`sign_in_provider` = `google.com`), e-mail verificado e domínio `ALLOWED_DOMAIN`.
+  Token de outro projeto Firebase ou de outro provedor (e-mail e senha, por exemplo) é
+  recusado.
+- **Navegador:** o SDK guarda a sessão no IndexedDB e renova o ID token (~1 h) sozinho;
+  "Sair" encerra a sessão do Firebase.
 
 ```bash
 npm run dev:server
@@ -155,6 +179,7 @@ produção.
 | | Staging | Produção |
 |---|---|---|
 | Branch | `staging` | `main` |
+| Endereço (Nginx Proxy Manager → `host:3012`) | `https://inventario-staging-dashboard.sebratel.net.br` | `https://inventario-dashboard.sebratel.net.br` |
 | Stack no Portainer | `dev_reactjs_inventorydashboard` (= repositório em minúsculas) | idem, no host de produção |
 | Container | `dev_reactjs_inventorydashboard-frontend-1` | idem |
 | Porta do host | **3012** (Frontend / Web UI, a mesma nos dois — planilha de portas) | **3012** |
@@ -163,8 +188,8 @@ produção.
 docker compose -f docker-compose.portainer.yml up -d --build
 ```
 
-- **Versão:** `1.2.0`, a mesma no `package.json` (raiz, `server/`, `web/`), nos
-  `package-lock.json` e na tag da imagem (`inventory-dashboard:${APP_VERSION:-1.2.0}`);
+- **Versão:** `1.3.0`, a mesma no `package.json` (raiz, `server/`, `web/`), nos
+  `package-lock.json` e na tag da imagem (`inventory-dashboard:${APP_VERSION:-1.3.0}`);
   aparece no Portainer e no `/api/v1/health`. Todo commit que sobe para um ambiente leva
   versão **maior** que a dele: troque com `npm run version:set -- X.Y.Z` (patch = correção,
   minor = funcionalidade, major = quebra).
@@ -178,8 +203,9 @@ docker compose -f docker-compose.portainer.yml up -d --build
   (`REFRESH_INTERVAL_MS=10800000`, `LIVE_REFRESH_INTERVAL_MS=300000`,
   `LAB_REFRESH_INTERVAL_MS=21600000`).
 - `TRUST_PROXY=1` atrás do proxy reverso (o rate limit precisa do IP real).
-- No Google Cloud, a origem pública do dashboard precisa estar nas **origens
-  JavaScript autorizadas** do cliente OAuth.
+- **Login:** `FIREBASE_API_KEY` e `FIREBASE_PROJECT_ID` na stack (ver
+  [Login](#login-firebase-authentication)); o domínio público de cada ambiente precisa estar
+  nos **domínios autorizados** do Firebase Authentication.
 - **Volume `inventory-dashboard-data` em `/app/data`**: guarda o cadastro de controle de
   estoque, os usuários com as permissões e o log de edições. Não remova o volume ao
   recriar a stack. O Compose prefixa o volume com o nome da stack
@@ -599,9 +625,9 @@ tela mostra. Quem comparar lado a lado vai encontrar estas diferenças:
 
 ## Segurança
 
-- Login com Google (Google Identity Services); o servidor valida o token no Google a
-  cada requisição (cache de 5 min pelo hash do token) e restringe ao domínio
-  `ALLOWED_DOMAIN`. Permissões (Padrão, Edição, Admin) guardadas no servidor e
+- Login com Google pelo Firebase Authentication; o servidor confere o ID token do Firebase
+  a cada requisição (assinatura, projeto, provedor Google, e-mail verificado) e restringe
+  ao domínio `ALLOWED_DOMAIN`. Permissões (Padrão, Edição, Admin) guardadas no servidor e
   conferidas a cada requisição: alteração do controle de estoque só com Edição ou Admin;
   Administração e atualização manual só com Admin. Gravações com rate limit próprio,
   validação estrita (campo desconhecido é recusado) e log de edições.

@@ -3,7 +3,7 @@ import { appConfig } from '../../config/env.config.js';
 import type { UserRole } from '../../modules/users/user.entity.js';
 import { touchUser } from '../../modules/users/user.service.js';
 import { AppException } from '../errors/app.exception.js';
-import { verifyGoogleAccessToken } from './google-token.verifier.js';
+import { verifyFirebaseIdToken } from './firebase-token.verifier.js';
 
 export type { UserRole } from '../../modules/users/user.entity.js';
 
@@ -56,15 +56,15 @@ export function requireAuth(options: { role?: UserRole; management?: boolean } =
       const match = /^Bearer ([A-Za-z0-9._~+/=-]{20,4096})$/.exec(req.headers.authorization ?? '');
       if (!match?.[1]) throw new AppException(401, 'AUTH_TOKEN_MISSING', 'Faça login para acessar o dashboard.');
 
-      const googleUser = await verifyGoogleAccessToken(match[1]);
-      if (!googleUser) throw new AppException(401, 'AUTH_TOKEN_EXPIRED', 'Sessão expirada. Entre novamente.');
+      const signedIn = await verifyFirebaseIdToken(match[1], appConfig.auth.firebase.projectId);
+      if (!signedIn) throw new AppException(401, 'AUTH_TOKEN_EXPIRED', 'Sessão expirada. Entre novamente.');
 
       const domain = appConfig.auth.allowedDomain;
-      if (domain && !googleUser.email.endsWith(`@${domain}`)) {
+      if (domain && !signedIn.email.endsWith(`@${domain}`)) {
         throw new AppException(403, 'AUTH_DOMAIN_NOT_ALLOWED', `Acesso restrito a contas @${domain}.`);
       }
 
-      req.user = { ...googleUser, ...touchUser(googleUser) };
+      req.user = { ...signedIn, ...touchUser(signedIn) };
       if (options.role && RANK[req.user.role] < RANK[options.role]) {
         throw new AppException(403, 'AUTH_FORBIDDEN', FORBIDDEN_MESSAGE[options.role]);
       }

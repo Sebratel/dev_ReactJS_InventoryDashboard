@@ -6,22 +6,28 @@ import { sendError } from '../http/api-response.js';
 /**
  * Cabeçalhos de segurança da SPA e da API.
  *
- * A CSP libera só o que o login com Google precisa (script e iframe do GIS,
- * foto do perfil). `same-origin-allow-popups` no COOP é obrigatório: o fluxo
- * de token do Google abre um popup e conversa com a janela de origem — com o
- * `same-origin` padrão do helmet o login simplesmente não volta.
+ * A CSP libera só o que o login pelo Firebase Authentication precisa:
+ *   - `apis.google.com`: o SDK carrega dali o script que monta o popup do Google;
+ *   - o `authDomain` do Firebase (`<projeto>.firebaseapp.com`): o iframe que
+ *     recebe o resultado do popup;
+ *   - `identitytoolkit` e `securetoken`: troca do login por ID token e renovação dele;
+ *   - foto do perfil em `*.googleusercontent.com`.
+ * `same-origin-allow-popups` no COOP é obrigatório: o login abre um popup que
+ * conversa com a janela de origem — com o `same-origin` padrão do helmet ele
+ * simplesmente não volta.
  */
-export function securityHeaders(): RequestHandler {
+export function securityHeaders(firebaseAuthDomain: string): RequestHandler {
+  const authOrigin = firebaseAuthDomain ? [`https://${firebaseAuthDomain}`] : [];
   return helmet({
     contentSecurityPolicy: {
       useDefaults: true,
       directives: {
         'default-src': ["'self'"],
-        'script-src': ["'self'", 'https://accounts.google.com/gsi/client'],
-        'style-src': ["'self'", "'unsafe-inline'", 'https://accounts.google.com/gsi/style'],
+        'script-src': ["'self'", 'https://apis.google.com'],
+        'style-src': ["'self'", "'unsafe-inline'"],
         'img-src': ["'self'", 'data:', 'https://*.googleusercontent.com'],
-        'connect-src': ["'self'", 'https://accounts.google.com/gsi/'],
-        'frame-src': ['https://accounts.google.com/gsi/'],
+        'connect-src': ["'self'", 'https://identitytoolkit.googleapis.com', 'https://securetoken.googleapis.com'],
+        'frame-src': [...authOrigin, 'https://apis.google.com'],
         'font-src': ["'self'", 'data:'],
         'object-src': ["'none'"],
         'base-uri': ["'self'"],

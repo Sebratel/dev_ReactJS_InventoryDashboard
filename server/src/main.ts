@@ -9,12 +9,12 @@ import { createApp } from './app.js';
 
 /**
  * Em produção, subir SEM login é falha de configuração, não opção silenciosa:
- * sem GOOGLE_CLIENT_ID o middleware deixaria qualquer um que alcance a URL ver
+ * sem o projeto Firebase o middleware deixaria qualquer um que alcance a URL ver
  * dado do ERP. Quem realmente quiser isso declara AUTH_ENABLED=false.
  */
 if (appConfig.isProduction && !appConfig.auth.enabled) {
   if (appConfig.auth.requested) {
-    logger.error('auth', 'GOOGLE_CLIENT_ID não definido — sem ele não há login. Defina-o (e ADMIN_EMAILS) na stack.');
+    logger.error('auth', 'FIREBASE_API_KEY e FIREBASE_PROJECT_ID não definidos — sem eles não há login. Defina-os (e ADMIN_EMAILS) na stack.');
     process.exit(1);
   }
   logger.warn('auth', 'AUTH_ENABLED=false em produção: o dashboard está ABERTO para quem alcançar a URL.');

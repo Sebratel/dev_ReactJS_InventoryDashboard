@@ -6,12 +6,16 @@ import { recordLogin } from '../users/user.service.js';
 
 export const authRouter = Router();
 
-/** Configuração pública do login: o ID do cliente OAuth não é segredo. */
+/**
+ * Configuração pública do login: a configuração web do Firebase não é segredo
+ * (é a mesma que qualquer app Firebase embute no navegador). Vem do servidor, e
+ * não do build, para a mesma imagem servir staging e produção.
+ */
 authRouter.get('/config', (_req, res) => {
   sendOk(res, {
     enabled: appConfig.auth.enabled,
-    clientId: appConfig.auth.clientId,
     allowedDomain: appConfig.auth.allowedDomain,
+    firebase: appConfig.auth.enabled ? appConfig.auth.firebase : null,
   });
 });
 

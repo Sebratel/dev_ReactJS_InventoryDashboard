@@ -18,14 +18,16 @@ revisão; os demais são riscos aceitos ou melhorias para a próxima fase.
 | 3 | MÉDIA | Imagem Docker em Node 20 (fim de suporte em abr/2026) | `node:24-alpine` (LTS) |
 | 4 | MÉDIA (confiabilidade) | Indicador "atualizado há…" usava a hora de remontagem do modelo: com todas as fontes falhando ele dizia "há 2 min" sobre dado de ontem | passa a mostrar a idade da leitura bem-sucedida mais antiga (`dataAsOf`) |
 | 5 | BAIXA | Rate limit geral de 240/min permitia ocupar a CPU com filtros aleatórios (até ~0,5 s por recorte novo) | 120/min por IP; 10/min na exportação |
+| 6 | MÉDIA | Token do Google aceito sem conferir para qual app foi emitido (o servidor só consultava o `userinfo`): o token de outro app Google, autorizado por alguém do domínio, também entrava | 16/11/2026: login passou ao Firebase Authentication do projeto próprio; o servidor confere a assinatura do ID token com as chaves do Firebase, `iss`/`aud` = nosso projeto, provedor `google.com` e e-mail verificado. Testado em `server/test/firebase-token.test.ts` |
 
 `npm audit --omit=dev`: 0 vulnerabilidades no servidor e no front após as correções.
 
 ## Controles verificados
 
-- **Autenticação:** token do Google validado no `userinfo` a cada requisição (cache de
-  5 min pelo hash do token), e-mail verificado e domínio restrito. Formato do token
-  validado antes de ir ao Google. Em produção o servidor não sobe sem login, salvo
+- **Autenticação:** ID token do Firebase Authentication conferido a cada requisição,
+  localmente: assinatura RS256 com as chaves públicas do Firebase, `iss`/`aud` do nosso
+  projeto, vencimento, login pelo Google e e-mail verificado; domínio restrito. Formato do
+  token validado antes da conferência. Em produção o servidor não sobe sem login, salvo
   `AUTH_ENABLED=false` explícito.
 - **Autorização:** todas as rotas de dados exigem login; atualização manual exige
   `ADMIN_EMAILS` e tem intervalo mínimo de 5 min. Testado em `server/test/api.test.ts`.
@@ -36,8 +38,9 @@ revisão; os demais são riscos aceitos ou melhorias para a próxima fase.
   campo, datas ISO); erro 400 nomeia o campo.
 - **Saída:** envelope padrão; 500 genérico sem stack trace; health público sem detalhe de
   fonte; mensagem de erro técnica da fonte não sai da API (a tela recebe só "falhou").
-- **Cabeçalhos:** helmet com CSP restrita ao necessário para o login do Google,
-  `frame-ancestors 'none'`, COOP `same-origin-allow-popups` (exigido pelo popup do GIS),
+- **Cabeçalhos:** helmet com CSP restrita ao necessário para o login do Firebase
+  (`apis.google.com`, o `authDomain` do projeto, `identitytoolkit` e `securetoken`),
+  `frame-ancestors 'none'`, COOP `same-origin-allow-popups` (exigido pelo popup do login),
   sem `x-powered-by`, sem CORS (SPA e API na mesma origem).
 - **Exportação CSV:** neutraliza injeção de fórmula (`=`, `+`, `-`, `@`).
 - **Segredos:** só em variável de ambiente; `.env*` fora do git; nenhum segredo no código
@@ -50,7 +53,7 @@ revisão; os demais são riscos aceitos ou melhorias para a próxima fase.
 | Severidade | Status | Item | Recomendação |
 |---|---|---|---|
 | MÉDIA | CONFIRMADO | Carga direta no Voalle de produção (sem camada intermediária, por decisão de 10/11/2026): ~3.400 consultas e ~69 mi de linhas por dia (depois do corte das alocações e do histórico de romaneios em 2026); a carga horária leva de ~3 a ~9 min conforme a carga do ERP (a view `v_allocated_products` sozinha leva de 2,5 a ~7 min) | Apontar para réplica de leitura, se houver; se preciso, Compras a cada 5 min (ver "Carga e impacto no banco" no README) |
-| BAIXA | POTENCIAL | Token do Google no `localStorage` (padrão das dashboards irmãs). Um XSS poderia lê-lo | Mitigado pela CSP; token dura ~1 h e só tem escopo de identidade. Reavaliar sessão por cookie `httpOnly` em todas as dashboards de uma vez |
+| BAIXA | POTENCIAL | Sessão do Firebase no IndexedDB do navegador (ID token de ~1 h e o token de renovação). Um XSS poderia lê-la | Mitigado pela CSP; o ID token só identifica a pessoa. Reavaliar sessão por cookie `httpOnly` se o painel passar a aceitar conteúdo de terceiros |
 | BAIXA | CONFIRMADO | Sem permissão por tela: todo usuário do domínio vê todas as telas | Se necessário, portar o controle de acesso por tela das dashboards irmãs |
 | BAIXA | CONFIRMADO | Cadastro de controle de estoque em arquivo JSON: não suporta mais de uma réplica do contêiner, e o histórico guarda só a última alteração de cada item | Uma réplica (como hoje). Backup do volume `inventory-dashboard-data`; o CSV da tela serve de cópia manual. Se precisar de histórico completo, levar o cadastro para um banco de dados |
 | INFO | — | `TRUST_PROXY` precisa refletir o proxy real em produção, senão o rate limit agrupa todos os usuários num IP | `docker-compose.portainer.yml` já usa 1 |

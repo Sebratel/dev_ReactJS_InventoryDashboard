@@ -11,14 +11,14 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        APP_VERSION: ${APP_VERSION:-1.2.0}
+        APP_VERSION: ${APP_VERSION:-1.3.0}
     # a versão vai na tag da imagem: o Portainer mostra qual versão está no ar
-    image: inventory-dashboard:${APP_VERSION:-1.2.0}
+    image: inventory-dashboard:${APP_VERSION:-1.3.0}
     # a imagem é construída aqui, não baixada de registro: sem isto o "Re-pull
     # image" do Portainer tenta o Docker Hub e o redeploy falha
     pull_policy: build
     labels:
-      org.opencontainers.image.version: ${APP_VERSION:-1.2.0}
+      org.opencontainers.image.version: ${APP_VERSION:-1.3.0}
     restart: unless-stopped
     # Frontend / Web UI (3000–3099): 3012 em staging e em produção (planilha de portas)
     ports:
@@ -49,9 +49,13 @@ services:
       # ---- dados do app (controle de estoque, usuários, log) — no volume abaixo ----
       DATA_PATH: /app/data
 
-      # ---- login com Google ----
+      # ---- login com Google (Firebase Authentication) ----
       AUTH_ENABLED: ${AUTH_ENABLED:-true}
-      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      # configuração web do app Firebase (pública, mas fora do git)
+      FIREBASE_API_KEY: ${FIREBASE_API_KEY}
+      FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID}
+      # opcional: padrão <projeto>.firebaseapp.com
+      FIREBASE_AUTH_DOMAIN: ${FIREBASE_AUTH_DOMAIN:-}
       ALLOWED_DOMAIN: ${ALLOWED_DOMAIN:-sebratel.com.br}
       # admin(s) de fábrica: só valem enquanto não houver nenhum admin salvo
       # (instalação nova); depois, permissões são dadas na tela de Administração

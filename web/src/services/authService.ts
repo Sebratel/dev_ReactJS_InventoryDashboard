@@ -1,189 +1,122 @@
 /**
- * Token do Google (Google Identity Services, fluxo de token) — o mesmo desenho
- * das outras dashboards: o front obtém o access_token, o servidor confere no
- * Google a cada requisição (com cache), e não existe senha nossa.
+ * Login com Google pelo Firebase Authentication (projeto Firebase do
+ * InventoryDashboard). O front abre o popup do Google pelo SDK do Firebase e
+ * manda o ID token do Firebase em cada requisição; o servidor confere a
+ * assinatura, o projeto, o provedor (Google) e o domínio. Não existe senha nossa.
  *
- * O token tem ~1 h de vida e escopo só de identidade (openid email profile).
- * Fica no localStorage para sobreviver ao F5, como nas dashboards irmãs; a CSP
- * do servidor é o que protege contra script injetado lê-lo.
+ * O SDK guarda a sessão no IndexedDB do navegador (sobrevive ao F5) e renova o
+ * ID token (~1 h de vida) sozinho: `getIdToken()` devolve o atual ou um novo.
+ * A CSP do servidor é o que protege contra script injetado lê-lo.
+ *
+ * Só os pacotes do login (`@firebase/app` e `@firebase/auth`), não o `firebase`
+ * completo: o Firestore dele traz `@grpc/grpc-js`, com alertas de segurança.
+ * O SDK é carregado sob demanda (import dinâmico): fica num pedaço próprio do
+ * bundle, fora do carregamento inicial da tela.
  */
+import type { Auth } from '@firebase/auth';
+import type { FirebasePublicConfig } from './types';
 
-const GSI_SRC = 'https://accounts.google.com/gsi/client';
-const STORAGE_KEY = 'inventory-dashboard.auth';
-const RENEW_BEFORE_MS = 5 * 60_000;
+export type SessionEndReason = 'EXPIRED' | 'LOGOUT';
 
-interface TokenResponse {
-  access_token?: string;
-  expires_in?: number | string;
-  error?: string;
-}
+/** chave da versão anterior do login (Google Identity Services): só é apagada */
+const LEGACY_STORAGE_KEY = 'inventory-dashboard.auth';
 
-interface TokenClient {
-  requestAccessToken: (overrides?: { prompt?: string }) => void;
-}
+let auth: Auth | null = null;
+let initializing: Promise<Auth> | null = null;
+let renewing: Promise<string> | null = null;
+const sessionEndListeners = new Set<(reason: SessionEndReason) => void>();
 
-declare global {
-  interface Window {
-    google?: {
-      accounts?: {
-        oauth2?: {
-          initTokenClient: (config: {
-            client_id: string;
-            scope: string;
-            callback: (response: TokenResponse) => void;
-            error_callback?: (error: unknown) => void;
-          }) => TokenClient;
-        };
-      };
-    };
+function forgetLegacyToken(): void {
+  try {
+    window.localStorage.removeItem(LEGACY_STORAGE_KEY);
+  } catch {
+    // storage bloqueado: nada a limpar
   }
 }
 
-interface StoredToken {
-  token: string;
-  expiresAt: number;
+/**
+ * Inicializa o Firebase com a configuração pública que o servidor entrega
+ * (`/auth/config`) e espera o SDK restaurar a sessão salva, se houver.
+ */
+export function initAuth(config: FirebasePublicConfig): Promise<Auth> {
+  if (auth) return Promise.resolve(auth);
+  initializing ??= (async () => {
+    forgetLegacyToken();
+    const [{ initializeApp }, { getAuth }] = await Promise.all([import('@firebase/app'), import('@firebase/auth')]);
+    const app = initializeApp({ apiKey: config.apiKey, authDomain: config.authDomain, projectId: config.projectId });
+    const instance = getAuth(app);
+    await instance.authStateReady();
+    auth = instance;
+    return instance;
+  })().catch((err: unknown) => {
+    initializing = null;
+    throw err instanceof Error ? err : new Error('Falha ao carregar o login do Google.');
+  });
+  return initializing;
 }
 
-function readStored(): StoredToken | null {
+/** Há sessão salva (alguém já entrou neste navegador e não saiu). */
+export const hasSession = (): boolean => Boolean(auth?.currentUser);
+
+/** ID token atual (o SDK renova sozinho perto do vencimento); null sem sessão. */
+export async function getIdToken(): Promise<string | null> {
+  const user = auth?.currentUser;
+  if (!user) return null;
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<StoredToken>;
-    if (typeof parsed.token !== 'string' || typeof parsed.expiresAt !== 'number') return null;
-    return { token: parsed.token, expiresAt: parsed.expiresAt };
+    return await user.getIdToken();
   } catch {
     return null;
   }
 }
 
-function writeStored(value: StoredToken | null): void {
-  try {
-    if (value) window.localStorage.setItem(STORAGE_KEY, JSON.stringify(value));
-    else window.localStorage.removeItem(STORAGE_KEY);
-  } catch {
-    // modo privado: o token vale só enquanto a aba estiver aberta
-  }
-}
+const FRIENDLY_ERRORS: Record<string, string> = {
+  'auth/popup-closed-by-user': 'A janela do Google foi fechada antes de concluir.',
+  'auth/cancelled-popup-request': 'A janela do Google foi fechada antes de concluir.',
+  'auth/user-cancelled': 'A janela do Google foi fechada antes de concluir.',
+  'auth/popup-blocked': 'O navegador bloqueou a janela do Google. Libere pop-ups para este site e tente de novo.',
+  'auth/unauthorized-domain': 'Este endereço não está liberado no login (Firebase: domínios autorizados). Fale com o suporte.',
+  'auth/operation-not-allowed': 'O login com Google não está ativado no projeto Firebase. Fale com o suporte.',
+  'auth/network-request-failed': 'Falha de rede ao falar com o Google. Tente de novo.',
+  'auth/too-many-requests': 'Muitas tentativas seguidas. Aguarde um pouco e tente de novo.',
+};
 
-let current: StoredToken | null = readStored();
-let tokenClient: TokenClient | null = null;
-let clientIdInUse: string | null = null;
-let scriptPromise: Promise<void> | null = null;
-let pending: { resolve: (token: string) => void; reject: (err: Error) => void } | null = null;
-let renewing: Promise<string> | null = null;
-let renewTimer: number | undefined;
-const sessionEndListeners = new Set<(reason: SessionEndReason) => void>();
-
-export type SessionEndReason = 'EXPIRED' | 'LOGOUT';
-
-/** Token atual, mesmo perto de vencer: quem decide que expirou é o 401 da API. */
-export const getAccessToken = (): string | null => current?.token ?? null;
-
-function setToken(token: string | null, expiresInSeconds = 3600): void {
-  current = token ? { token, expiresAt: Date.now() + expiresInSeconds * 1000 } : null;
-  writeStored(current);
-  scheduleRenewal();
+function friendly(err: unknown): Error {
+  const code = typeof err === 'object' && err && 'code' in err ? String((err as { code: unknown }).code) : '';
+  return new Error(FRIENDLY_ERRORS[code] ?? 'Não foi possível entrar com o Google.');
 }
 
 /**
- * Renova sozinho cinco minutos antes do vencimento. Se a renovação antecipada
- * falhar, NÃO encerra a sessão: o token atual ainda vale, e quem decide que a
- * sessão acabou é o 401 de verdade da API.
+ * Abre o popup do Google. `hd` sugere ao Google mostrar só contas do domínio —
+ * é conveniência: quem barra outro domínio de verdade é o servidor.
  */
-function scheduleRenewal(): void {
-  window.clearTimeout(renewTimer);
-  if (!current) return;
-  const wait = Math.max(5000, current.expiresAt - Date.now() - RENEW_BEFORE_MS);
-  renewTimer = window.setTimeout(() => {
-    renewAccessToken().catch(() => undefined);
-  }, wait);
+export async function signInWithGoogle(allowedDomain: string): Promise<void> {
+  if (!auth) throw new Error('Login não inicializado.');
+  const { GoogleAuthProvider, signInWithPopup } = await import('@firebase/auth');
+  const provider = new GoogleAuthProvider();
+  provider.setCustomParameters({ prompt: 'select_account', ...(allowedDomain ? { hd: allowedDomain } : {}) });
+  try {
+    await signInWithPopup(auth, provider);
+  } catch (err) {
+    throw friendly(err);
+  }
 }
 
-function loadScript(): Promise<void> {
-  if (window.google?.accounts?.oauth2) return Promise.resolve();
-  if (scriptPromise) return scriptPromise;
-  scriptPromise = new Promise<void>((resolve, reject) => {
-    const script = document.createElement('script');
-    script.src = GSI_SRC;
-    script.async = true;
-    script.defer = true;
-    script.onload = () => resolve();
-    script.onerror = () => {
-      scriptPromise = null;
-      reject(new Error('Falha ao carregar o login do Google.'));
-    };
-    document.head.appendChild(script);
-  });
-  return scriptPromise;
-}
-
-export async function initGoogleClient(clientId: string): Promise<void> {
-  await loadScript();
-  if (tokenClient && clientIdInUse === clientId) return;
-  const oauth2 = window.google?.accounts?.oauth2;
-  if (!oauth2) throw new Error('Login do Google indisponível.');
-  clientIdInUse = clientId;
-  tokenClient = oauth2.initTokenClient({
-    client_id: clientId,
-    scope: 'openid email profile',
-    callback: (response) => {
-      const waiting = pending;
-      pending = null;
-      if (!waiting) return;
-      if (response.access_token) {
-        setToken(response.access_token, Number(response.expires_in) || 3600);
-        waiting.resolve(response.access_token);
-      } else {
-        waiting.reject(new Error('O Google não devolveu o token de acesso.'));
-      }
-    },
-    error_callback: () => {
-      const waiting = pending;
-      pending = null;
-      waiting?.reject(new Error('A janela do Google foi fechada antes de concluir.'));
-    },
-  });
-}
-
-function requestToken(silent: boolean): Promise<string> {
-  if (!tokenClient) return Promise.reject(new Error('Login não inicializado.'));
-  const client = tokenClient;
-  return new Promise<string>((resolve, reject) => {
-    const timeout = window.setTimeout(() => {
-      if (pending) {
-        pending = null;
-        reject(new Error('Tempo esgotado ao falar com o Google.'));
-      }
-    }, 20_000);
-    pending = {
-      resolve: (token) => { window.clearTimeout(timeout); resolve(token); },
-      reject: (err) => { window.clearTimeout(timeout); reject(err); },
-    };
-    try {
-      client.requestAccessToken(silent ? { prompt: 'none' } : {});
-    } catch (err) {
-      window.clearTimeout(timeout);
-      pending = null;
-      reject(err instanceof Error ? err : new Error('Falha no login.'));
-    }
-  });
-}
-
-export const signInWithGoogle = (): Promise<string> => requestToken(false);
-
-/** Renovação silenciosa (sem tela), usada antes do vencimento e no 401. */
-export function renewAccessToken(): Promise<string> {
-  if (renewing) return renewing;
-  renewing = requestToken(true).finally(() => {
+/** Força um ID token novo (usado no 401: o servidor pode ter recusado um token velho). */
+export function renewIdToken(): Promise<string> {
+  const user = auth?.currentUser;
+  if (!user) return Promise.reject(new Error('Sem sessão.'));
+  renewing ??= user.getIdToken(true).finally(() => {
     renewing = null;
   });
   return renewing;
 }
 
 export function endSession(reason: SessionEndReason): void {
-  if (!current && reason === 'EXPIRED') return;
-  window.clearTimeout(renewTimer);
-  setToken(null);
+  if (!auth?.currentUser && reason === 'EXPIRED') return;
+  const instance = auth;
+  if (instance) {
+    void import('@firebase/auth').then(({ signOut }) => signOut(instance)).catch(() => undefined);
+  }
   sessionEndListeners.forEach((listener) => listener(reason));
 }
 
@@ -191,5 +124,3 @@ export function onSessionEnd(listener: (reason: SessionEndReason) => void): () =
   sessionEndListeners.add(listener);
   return () => sessionEndListeners.delete(listener);
 }
-
-scheduleRenewal();
